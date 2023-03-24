@@ -1,5 +1,6 @@
 from .autoencoder_lightning import AEModel
 from .mlp_lightning import MLPModel
+from .resnet1d import ResNet1DModel
 from .base_model import BaseLightningModule
 from .kdtree import KDAttributeTree
 
@@ -17,6 +18,7 @@ logging.getLogger("pytorch_lightning").setLevel(logging.WARNING)
 __all__ = [
     "AEModel",
     "MLPModel",
+    "ResNet1DModel",
     "BaseLightningModule",
     "KDAttributeTree",
 ]
