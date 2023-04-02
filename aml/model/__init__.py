@@ -13,6 +13,9 @@ warnings.filterwarnings("ignore", ".*does not have many workers.*")
 warnings.filterwarnings(
     "ignore", ".*You defined a `validation_step` but have no `val_dataloader`.*"
 )
+warnings.filterwarnings(
+    "ignore", ".*GPU available but not used.*"
+)
 logging.getLogger("pytorch_lightning").setLevel(logging.WARNING)
 
 
