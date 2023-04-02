@@ -7,6 +7,8 @@ import copy
 import gc
 import pytorch_lightning as pl
 from pytorch_lightning import LightningModule
+from pytorch_lightning.callbacks.early_stopping import EarlyStopping
+from sklearn.model_selection import train_test_split
 from .utils import get_optimizer_from_name, get_criterion_from_name
 from .optimizer import CombineOptimizers
 from .fitting import BasicModelFitter
@@ -28,6 +30,7 @@ class TrainingHelper:
         X_val: typing.Union[np.array, None] = None,
         y_val: typing.Union[np.array, None] = None,
         val_loader: torch.utils.data.DataLoader = None,
+        early_stopping: bool = False,
     ):
         """
         This is used to prepare the fit model. Please either use
@@ -64,6 +67,12 @@ class TrainingHelper:
             The validation data, which contains the input and the targets.
             Defaults to :code:`None`.
 
+        - early_stopping: bool, optional:
+            Whether to use early stopping or not. If validation data
+            is not passed then some training data will be used as the
+            validation data.
+            Defaults to :code:`False`.
+
         Returns
         --------
 
@@ -83,6 +92,25 @@ class TrainingHelper:
         assert ~(
             (not val_loader is None) and (not X_val is None)
         ), "Please either use val_loader OR X_val and y_val"
+
+        # if early stopping is used, then we might
+        # need to split the training data
+        if early_stopping:
+            if val_loader is None:
+                if X_val is None:
+                    if type(X) == np.ndarray:
+                        X, X_val, y, y_val = train_test_split(
+                            X,
+                            y,
+                            test_size=0.1,
+                            stratify=y,
+                        )
+            else:
+                raise NotImplementedError(
+                    "currently early stopping is not "
+                    "implemented if val_loader and X_val is None "
+                    "and X is not a numpy array"
+                )
 
         val_too = False if ((X_val is None) and (val_loader is None)) else True
 
@@ -449,10 +477,6 @@ class TrainingHelper:
 
 
 class BaseModel(TrainingHelper, nn.Module):
-    """
-    A simple Auto-Encoder model that learns embeddings.
-    """
-
     def __init__(
         self,
         device: str = "auto",
@@ -475,7 +499,6 @@ class BaseModel(TrainingHelper, nn.Module):
         metrics_track=None,
     ):
         """
-        An auto-encoder model, built to be run similar to sklearn models.
 
         Arguments
         ---------
@@ -792,6 +815,7 @@ class BaseLightningModule(TrainingHelper, LightningModule):
         enable_checkpointing: bool = False,
         pl_trainer_kwargs: dict = {},
         callbacks: list = [],
+        early_stopping: int = None,
         logging: bool = False,
         log_every_n_steps: int = 20,
     ):
@@ -868,6 +892,14 @@ class BaseLightningModule(TrainingHelper, LightningModule):
             is passed to this list within this class.
             Defaults to :code:`[]`.
 
+        - early_stopping: int, optional:
+            Whether to use early stopping. If an X_val and y_val
+            are passed during the fitting, these will be used.
+            Otherwise a sample from the training data will be used.
+            If None, early stopping will not be used, and if
+            an integer, this will be used as the patience.
+            Defaults to :code:`None`.
+
         - logging: bool, optional:
             Whether to log the run data.
             Defaults to :code:`False`.
@@ -892,6 +924,8 @@ class BaseLightningModule(TrainingHelper, LightningModule):
         self.logging = logging
         self.log_every_n_steps = log_every_n_steps
         self.enable_checkpointing = enable_checkpointing
+        self.early_stopping = False if early_stopping is None else True
+        self.early_stopping_patience = early_stopping
 
         self._reset_trainer()
 
@@ -912,10 +946,16 @@ class BaseLightningModule(TrainingHelper, LightningModule):
         else:
             logger = False
 
+        call_backs_to_pass = []
+
         if self.verbose:
-            call_backs_to_pass = [MyProgressBar(refresh_rate=10)]
-        else:
-            call_backs_to_pass = []
+            call_backs_to_pass.append(MyProgressBar(refresh_rate=10))
+
+        if self.early_stopping:
+            call_backs_to_pass.append(
+                EarlyStopping(monitor="val_loss", patience=self.early_stopping_patience)
+            )
+
         call_backs_to_pass.extend(self.callbacks)
 
         self.trainer = pl.Trainer(
@@ -1002,6 +1042,7 @@ class BaseLightningModule(TrainingHelper, LightningModule):
             X_val=X_val,
             y_val=y_val,
             val_loader=val_loader,
+            early_stopping=self.early_stopping,
         )
 
         self._build_training_methods()
