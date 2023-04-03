@@ -31,6 +31,7 @@ class TrainingHelper:
         y_val: typing.Union[np.array, None] = None,
         val_loader: torch.utils.data.DataLoader = None,
         early_stopping: bool = False,
+        validation_fraction: float = 0.1,
     ):
         """
         This is used to prepare the fit model. Please either use
@@ -102,7 +103,7 @@ class TrainingHelper:
                         X, X_val, y, y_val = train_test_split(
                             X,
                             y,
-                            test_size=0.1,
+                            test_size=validation_fraction,
                             stratify=y,
                         )
             else:
@@ -816,6 +817,7 @@ class BaseLightningModule(TrainingHelper, LightningModule):
         pl_trainer_kwargs: dict = {},
         callbacks: list = [],
         early_stopping: int = None,
+        validation_fraction: float = 0.1,
         logging: bool = False,
         log_every_n_steps: int = 20,
     ):
@@ -900,6 +902,14 @@ class BaseLightningModule(TrainingHelper, LightningModule):
             an integer, this will be used as the patience.
             Defaults to :code:`None`.
 
+        - validation_fraction: float, optional:
+            If :code:`early_stopping` is not None,
+            and no validation data is passed, then a
+            fraction of the training data will be used.
+            This parameter defines that fraction of the
+            training data.
+            Defaults to :code:`0.1`.
+
         - logging: bool, optional:
             Whether to log the run data.
             Defaults to :code:`False`.
@@ -926,6 +936,7 @@ class BaseLightningModule(TrainingHelper, LightningModule):
         self.enable_checkpointing = enable_checkpointing
         self.early_stopping = False if early_stopping is None else True
         self.early_stopping_patience = early_stopping
+        self.validation_fraction = validation_fraction
 
         self._reset_trainer()
 
@@ -1043,6 +1054,7 @@ class BaseLightningModule(TrainingHelper, LightningModule):
             y_val=y_val,
             val_loader=val_loader,
             early_stopping=self.early_stopping,
+            validation_fraction=self.validation_fraction,
         )
 
         self._build_training_methods()
