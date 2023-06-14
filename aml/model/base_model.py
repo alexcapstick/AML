@@ -104,7 +104,7 @@ class TrainingHelper:
                             X,
                             y,
                             test_size=validation_fraction,
-                            stratify=y,
+                            # stratify=y,
                         )
             else:
                 raise NotImplementedError(

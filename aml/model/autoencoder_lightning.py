@@ -263,12 +263,12 @@ class AEModel(BaseLightningModule):
         self._build_model()
 
         if train_loader is None:
-            y = deepcopy(X)
+            y = X
         else:
             y = None
 
         if val_loader is None:
-            y_val = deepcopy(X_val)
+            y_val = X_val
         else:
             y_val = None
 
