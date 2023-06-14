@@ -171,6 +171,7 @@ class AEModel(BaseLightningModule):
         self.n_embedding = n_embedding
         self.n_layers = n_layers
         self.dropout = dropout
+        self.reconstruct_on_predict = False
 
         return
 
@@ -214,7 +215,10 @@ class AEModel(BaseLightningModule):
         if type(batch) == list:
             batch = batch[0]
         batch = batch.view(batch.size(0), -1)
-        return self(batch)
+        if self.reconstruct_on_predict:
+            return self.d(self(batch))
+        else:
+            return self(batch)
 
     def fit(
         self,
@@ -313,3 +317,45 @@ class AEModel(BaseLightningModule):
             test_loader=test_loader,
             **kwargs,
         )
+
+    def predict(
+        self,
+        X: np.array = None,
+        test_loader: torch.utils.data.DataLoader = None,
+        reconstruct: bool = False,
+        **kwargs,
+    ):
+        """
+        Method for predicting data based on the fit AE.
+
+        Arguments
+        ---------
+
+        - X_test: numpy.array or None, optional:
+            The input array to test the model on.
+            Defaults to :code:`None`.
+
+        - test_loader: torch.utils.data.DataLoader or None, optional:
+            A data loader containing the test data.
+            Defaults to :code:`None`.
+
+
+        Returns
+        --------
+
+        - output: torch.tensor:
+            The resutls from the predictions
+
+        """
+
+        self.reconstruct_on_predict = reconstruct
+
+        output = super(AEModel, self).predict(
+            X=X,
+            test_loader=test_loader,
+            **kwargs,
+        )
+
+        self.reconstruct_on_predict = False
+
+        return output
