@@ -339,6 +339,9 @@ class AEModel(BaseLightningModule):
             A data loader containing the test data.
             Defaults to :code:`None`.
 
+        - reconstruct: bool, optional:
+            Whether to reconstruct the input data.
+
 
         Returns
         --------
