@@ -116,8 +116,8 @@ class TransformerEncoderModel(BaseLightningModule):
         n_input: int = None,
         seq_len: int = None,
         n_heads: int = 5,
-        lr=0.001,
-        weight_decay=0.0,
+        lr: float = 0.001,
+        weight_decay: float = 0.0,
         dim_feedforward: int = 2048,
         transformer_encoder_dim_feedforward: int = 2048,
         dropout: float = 0.1,
@@ -180,6 +180,14 @@ class TransformerEncoderModel(BaseLightningModule):
             The dimension of the feedforward network model in the transformer encoder.
             Defaults to :code:`2048`.
 
+        - lr: float, optional:
+            The learning rate to be used in the optimizer.
+            Defaults to :code:`0.001`.
+
+        - weight_decay: float, optional:
+            The weight decay to be used in the optimizer.
+            Defaults to :code:`0.0`.
+
         - dropout: float, optional:
             The dropout value in each of the layers in the transformer encoder.
             Defaults to :code:`0.1`.
@@ -205,6 +213,8 @@ class TransformerEncoderModel(BaseLightningModule):
             The key can also be a :code:`torch.optim` class,
             but not initiated.
             For example: :code:`{torch.optim.Adam:{'lr':0.01}}`.
+            If using a string, please use one of :code:`['adam', 'sgd', 'adagrad']`
+            and provide :code:`lr` and :code:`weight_decay`.
             Defaults to :code:`{'adam':{'lr':0.01}}`.
 
         - n_epochs: int, optional:
@@ -230,8 +240,11 @@ class TransformerEncoderModel(BaseLightningModule):
                     f"-{dim_feedforward}-{dropout}"
                 )
 
+        if type(optimizer) != dict:
+            optimizer = {optimizer: {"lr": lr, "weight_decay": weight_decay}}
+
         super().__init__(
-            optimizer={optimizer: {"lr": lr, "weight_decay": weight_decay}},
+            optimizer=optimizer,
             criterion=criterion,
             n_epochs=n_epochs,
             accelerator=accelerator,
