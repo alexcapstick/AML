@@ -10,7 +10,7 @@ To use aml, first install it using pip:
 
 .. code-block:: console
 
-   (.venv) $ pip install AML
+   (.venv) $ pip install git+https://github.com/alexcapstick/AML@main#egg=aml
 
 
 
