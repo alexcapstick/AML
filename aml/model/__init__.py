@@ -4,6 +4,17 @@ from .transformer_encoder import TransformerEncoderModel
 from .resnet1d import ResNet1DModel
 from .base_model import BaseLightningModule
 from .kdtree import KDAttributeTree
+from .vae import (
+    VAE,
+    VAEEncoder,
+    VAEDecoder,
+    GaussianMixPrior,
+    StandardNormalPrior,
+    log_bernoulli,
+    log_categorical,
+    log_normal_diag,
+    log_standard_normal,
+)
 
 import warnings
 import logging
@@ -13,9 +24,7 @@ warnings.filterwarnings("ignore", ".*does not have many workers.*")
 warnings.filterwarnings(
     "ignore", ".*You defined a `validation_step` but have no `val_dataloader`.*"
 )
-warnings.filterwarnings(
-    "ignore", ".*GPU available but not used.*"
-)
+warnings.filterwarnings("ignore", ".*GPU available but not used.*")
 logging.getLogger("pytorch_lightning").setLevel(logging.WARNING)
 
 
@@ -26,4 +35,13 @@ __all__ = [
     "ResNet1DModel",
     "BaseLightningModule",
     "KDAttributeTree",
+    "VAE",
+    "VAEEncoder",
+    "VAEDecoder",
+    "GaussianMixPrior",
+    "StandardNormalPrior",
+    "log_bernoulli",
+    "log_categorical",
+    "log_normal_diag",
+    "log_standard_normal",
 ]
