@@ -241,7 +241,7 @@ class VAEEncoder(nn.Module):
         if mu == None or log_var == None or z == None:
             mu, log_var = self.encode_net(x).chunk(2, dim=-1)
             z = self.reparameterization(mu, log_var)
-        return log_normal_diag(z, mu, log_var)
+        return log_normal_diag(z, mu, log_var, reduction=None, dim=None)
 
     # return z, mu, and log_var
     def forward(
@@ -799,10 +799,14 @@ class VAE(nn.Module):
 
         - prior: nn.Module:
             The prior. This should have methods for sampling
-            and calculating the log probability.
+            and calculating the log probability. Specifically,
+            it should implement the following methods:
+            - sample(batch_size: int) -> torch.Tensor[batch_size, latent_dim]
+            - log_prob(z: torch.Tensor) -> torch.Tensor[batch_size, latent_dim]
 
         - KL_beta: float, optional:
-            The KL weight used in the loss.
+            The KL weight used in the loss. This will likely need
+            to be tuned for each dataset.
             Defaults to :code:`1.0`.
 
         """
