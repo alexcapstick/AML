@@ -7,6 +7,7 @@ from sklearn.metrics._classification import (
     _prf_divide,
 )
 from sklearn.metrics import precision_recall_curve, auc
+from scipy import stats
 
 
 def countna(
@@ -166,6 +167,85 @@ def format_mean_std(
     mean = np.mean(values)
     std = np.std(values)
     return string.format(mean=mean, std=std)
+
+
+def format_mean_ci(
+    values: np.ndarray,
+    confidence: float = 0.95,
+    string: str = "{mean:.2f} ({confidence_l:.2f} - {confidence_u:.2f})",
+    distribution: typing.Literal["norm", "t"] = "t",
+) -> str:
+    """
+    A function useful for formatting a table with information
+    on the mean and confidence intervals of a set of values.
+    You may use the normal distribution or the t-distribution
+    to calculate the confidence intervals.
+
+    Examples
+    ---------
+
+    .. code-block::
+
+        >>> import numpy as np
+        >>> format_mean_confidence(
+        ...     values=np.array([1,2,3,4,5]),
+        ...     confidence=0.95,
+        ...     string="{mean:.2f} ({confidence_l:.2f} - {confidence_u:.2f})",
+        ...     distribution='t',
+        ... )
+        '3.00 (1.04 - 4.96)'
+
+
+    Arguments
+    ---------
+
+    - values: numpy.ndarray:
+        The array to calculate the values on.
+
+    - confidence: float, optional:
+        The confidence interval to calculate.
+        Defaults to :code:`0.95`.
+
+    - string: str, optional:
+        The string that dictates the output.
+        This should include somewhere :code:`{mean}`,
+        :code:`{confidence_l}`, and :code:`{confidence_u}`.
+        Defaults to :code:`"{mean:.2f} ({confidence_l:.2f} - {confidence_u:.2f})"`.
+
+    - distribution: str, optional:
+        The distribution to use for calculating the confidence
+        intervals. Can be either :code:`'norm'` or :code:`'t'`.
+        Defaults to :code:`'t'`.
+
+    Returns
+    ---------
+
+    - stats: str:
+        A string of the desired format with the
+        statistics included.
+
+
+    """
+
+    mean = np.mean(values)
+
+    if distribution == "norm":
+        confidence_l, confidence_u = stats.norm.interval(
+            alpha=confidence,
+            loc=np.mean(values),
+            scale=stats.sem(values),
+        )
+    elif distribution == "t":
+        confidence_l, confidence_u = stats.t.interval(
+            alpha=confidence,
+            df=len(values) - 1,
+            loc=np.mean(values),
+            scale=stats.sem(values),
+        )
+
+    return string.format(
+        mean=mean, confidence_l=confidence_l, confidence_u=confidence_u
+    )
 
 
 def sensitivity_specificity_ppv_npv(

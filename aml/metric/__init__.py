@@ -14,6 +14,7 @@ from .metric_functions import (
     ppv_score,
     npv_score,
     auc_precision_recall_curve,
+    format_mean_ci,
 )
 
 
@@ -31,4 +32,5 @@ __all__ = [
     "ppv_score",
     "npv_score",
     "auc_precision_recall_curve",
+    "format_mean_ci",
 ]
