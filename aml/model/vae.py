@@ -288,6 +288,7 @@ class VAEDecoder(nn.Module):
         num_values: t.Union[int, None] = None,
         decoder_log_var: bool = False,
         out_shape: t.Union[t.Tuple[int, ...], None] = None,
+        log_var_method: t.Literal["learned", "fixed"] = "fixed",
     ):
         """
         The decoder network that maps the latent sample to the
@@ -346,6 +347,14 @@ class VAEDecoder(nn.Module):
             The shape of the output data.
             This is only used in the case of the :code:`decoder_log_var=False`.
             Defaults to :code:`None`.
+
+        - log_var_method: t.Literal["learned", "fixed"], optional:
+            Whether the log-variance of the standard normal
+            distribution is learned or fixed. If :code:`"learned"`,
+            then the log-variance will be learned. If :code:`"fixed"`,
+            then the log-variance will be fixed to a value of :code:`1`.
+            This will only be used if :code:`decoder_log_var=False`.
+            Defaults to :code:`"fixed"`.
         
         
         """
@@ -365,8 +374,12 @@ class VAEDecoder(nn.Module):
                 raise ValueError(
                     "out_shape must be specified if decoder_log_var is True."
                 )
-            self.log_var = nn.Parameter(torch.zeros(out_shape))
-            torch.nn.init.normal_(self.log_var, mean=0, std=0.1)
+            if log_var_method == "fixed":
+                self.log_var = nn.Parameter(torch.ones(out_shape))
+                self.log_var.requires_grad = False
+            elif log_var_method == "learned":
+                self.log_var = nn.Parameter(torch.zeros(out_shape))
+                torch.nn.init.uniform_(self.log_var, a=-0.08, b=0.08)
 
     # calculates the parameteres of the distribution p(x|z)
     def decode(self, z: torch.Tensor) -> torch.Tensor:
