@@ -1,5 +1,6 @@
 from .autoencoder_lightning import AEModel
 from .mlp_lightning import MLPModel
+from .module_utils import LambdaModule
 from .transformer_encoder import TransformerEncoderModel
 from .resnet1d import ResNet1DModel
 from .base_model import BaseLightningModule
@@ -10,10 +11,6 @@ from .vae import (
     VAEDecoder,
     GaussianMixPrior,
     StandardNormalPrior,
-    log_bernoulli,
-    log_categorical,
-    log_normal_diag,
-    log_standard_normal,
 )
 
 import warnings
@@ -31,6 +28,7 @@ logging.getLogger("pytorch_lightning").setLevel(logging.WARNING)
 __all__ = [
     "AEModel",
     "MLPModel",
+    "LambdaModule",
     "TransformerEncoderModel",
     "ResNet1DModel",
     "BaseLightningModule",
@@ -40,8 +38,4 @@ __all__ = [
     "VAEDecoder",
     "GaussianMixPrior",
     "StandardNormalPrior",
-    "log_bernoulli",
-    "log_categorical",
-    "log_normal_diag",
-    "log_standard_normal",
 ]

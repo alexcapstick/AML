@@ -1,6 +1,6 @@
 # This is an implementation of a Variational Autoencoder (VAE) model.
 # It can be used by wrapping modules in the :code:`VAEEncoder` and :code:`VAEDecoder` classes.
-# The :code:`VAEEncoder` class is used to encode the data into the mean and log-variance
+# The :code:`VAEEncoder` class is used to encode the data into the mean and standard deviation
 # of the latent distribution. The :code:`VAEDecoder` class is used to decode the latent
 # variables into the output data. The :code:`VAE` class is used to wrap the encoder and
 # decoder together into a single model. The :code:`Prior` class is used to define the
@@ -18,55 +18,7 @@ import typing as t
 # a generative modelling summer school GeMSS Copenhagen 2023
 
 PI = torch.from_numpy(np.asarray(np.pi))
-EPS = 1.0e-5
-
-
-def log_categorical(x, p, num_classes=256, reduction=None, dim=None):
-    x_one_hot = F.one_hot(x.long(), num_classes=num_classes)
-    log_p = x_one_hot * torch.log(torch.clamp(p, EPS, 1.0 - EPS))
-    if reduction == "mean":
-        return torch.mean(log_p, dim)
-    elif reduction == "sum":
-        return torch.sum(log_p, dim)
-    else:
-        return log_p
-
-
-def log_bernoulli(x, p, reduction=None, dim=None):
-    pp = torch.clamp(p, EPS, 1.0 - EPS)
-    log_p = x * torch.log(pp) + (1.0 - x) * torch.log(1.0 - pp)
-    if reduction == "mean":
-        return torch.mean(log_p, dim)
-    elif reduction == "sum":
-        return torch.sum(log_p, dim)
-    else:
-        return log_p
-
-
-def log_normal_diag(x, mu, log_var, reduction=None, dim=None):
-    D = x.shape[1]
-    log_p = (
-        -0.5 * D * torch.log(2.0 * PI)
-        - 0.5 * log_var
-        - 0.5 * torch.exp(-log_var) * (x - mu) ** 2.0
-    )
-    if reduction == "mean":
-        return torch.mean(log_p, dim)
-    elif reduction == "sum":
-        return torch.sum(log_p, dim)
-    else:
-        return log_p
-
-
-def log_standard_normal(x, reduction=None, dim=None):
-    D = x.shape[1]
-    log_p = -0.5 * D * torch.log(2.0 * PI) - 0.5 * x**2.0
-    if reduction == "mean":
-        return torch.mean(log_p, dim)
-    elif reduction == "sum":
-        return torch.sum(log_p, dim)
-    else:
-        return log_p
+EPS = 1.0e-7
 
 
 class VAEEncoder(nn.Module):
@@ -82,20 +34,29 @@ class VAEEncoder(nn.Module):
         The following example shows how to wrap a simple
         MLP for use in a VAE. The MLP takes in a tensor
         of shape (batch_size, 32) and outputs a tensor
-        of shape (batch_size, 2*latent_dim). The first
+        of shape (2, batch_size, latent_dim). The first
         half of the output is used as the mean of the
         latent distribution, and the second half is used
-        as the log-variance of the latent distribution.
+        as the standard deviation of the latent distribution.
 
         .. code-block::
 
-            >>> encoder_net = nn.Sequential(
-            ...     nn.Linear(32, 256),
-            ...     nn.ReLU(),
-            ...     nn.Linear(256, 256),
-            ...     nn.ReLU(),
-            ...     nn.Linear(256, 32*2),
-            ... )
+            >>> class MLPEncoder(nn.Module):
+            ...     def __init__(self):
+            ...         super().__init__()
+            ...         self.fc = nn.Sequential(
+            ...             nn.Linear(32, 256),
+            ...             nn.ReLU(),
+            ...             nn.Linear(256, 256),
+            ...             nn.ReLU(),
+            ...             nn.Linear(256, 32*2),
+            ...         )
+            ...
+            ...     def forward(self, x):
+            ...         h = self.fc(x)
+            ...         mu, std = torch.chunk(h, 2, dim=1)
+            ...         return mu, F.softplus(std) + 1e-7
+            >>> encoder_net = MLPEncoder()
             >>> encoder = Encoder(encoder_net)
 
 
@@ -105,29 +66,20 @@ class VAEEncoder(nn.Module):
         - encode_net: nn.Module:
             The network that will be used to encode the data.
             This network should output a tensor of
-            shape (batch_size, 2*latent_dim). This is so that
-            the first half of the output can be used as the
-            mean of the latent distribution, and the second
-            half can be used as the log-variance of the latent
-            distribution.
+            shape (2, batch_size, latent_dim). This is so that
+            the first half of the output is used as the mean of the
+            latent distribution, and the second half is used
+            as the standard deviation of the latent distribution.
 
         """
         super(VAEEncoder, self).__init__()
 
         self.encode_net = encode_net
 
-    @staticmethod
-    def reparameterization(mu: torch.Tensor, log_var: torch.Tensor) -> torch.Tensor:
-        """
-        Reparameterization trick for sampling from a Gaussian.
-        """
-        # return z = mu + sigma * epsilon
-        return mu + torch.exp(0.5 * log_var) * torch.randn_like(log_var)
-
-    # encode x into mu and log_var
+    # encode x into mu and std
     def encode(self, x: torch.Tensor) -> t.Tuple[torch.Tensor, torch.Tensor]:
         """
-        Encode the input data into the mean and log-variance
+        Encode the input data into the mean and standard deviation
         of the latent distribution.
 
         Arguments
@@ -143,18 +95,18 @@ class VAEEncoder(nn.Module):
         - mu: torch.Tensor:
             The mean of the latent distribution.
 
-        - log_var: torch.Tensor:
-            The log-variance of the latent distribution.
+        - std: torch.Tensor:
+            The standard deviation of the latent distribution.
 
         """
-        return self.encode_net(x).chunk(2, dim=-1)
+        return self.encode_net(x)
 
     # sample z from q(z|x)
     def sample(
         self,
         x: t.Union[None, torch.Tensor] = None,
         mu: t.Union[None, torch.Tensor] = None,
-        log_var: t.Union[None, torch.Tensor] = None,
+        std: t.Union[None, torch.Tensor] = None,
     ) -> torch.Tensor:
         """
         Sample from the latent distribution.
@@ -164,7 +116,7 @@ class VAEEncoder(nn.Module):
 
         - x: torch.Tensor:
             The input data. This is only used if :code:`mu` and
-            :code:`log_var` are not provided.
+            :code:`std` are not provided.
             Defaults to :code:`None`.
 
         - mu: torch.Tensor:
@@ -173,8 +125,8 @@ class VAEEncoder(nn.Module):
             encoded to obtain this value.
             Defaults to :code:`None`.
 
-        - log_var: torch.Tensor:
-            The log-variance of the latent distribution.
+        - std: torch.Tensor:
+            The standard deviation of the latent distribution.
             If this is not provided, then the input data
             will be encoded to obtain this value.
             Defaults to :code:`None`.
@@ -187,16 +139,17 @@ class VAEEncoder(nn.Module):
             The sample from the latent distribution.
 
         """
-        if mu == None or log_var == None:
-            mu, log_var = self.encode_net(x).chunk(2, dim=-1)
-        return self.reparameterization(mu, log_var)
+        if mu == None or std == None:
+            mu, std = self.encode_net(x)
+        qz = torch.distributions.Normal(mu, std)
+        return qz.rsample()
 
     # calculate the log probability of z under q(z|x)
     def log_prob(
         self,
         x: t.Union[None, torch.Tensor] = None,
         mu: t.Union[None, torch.Tensor] = None,
-        log_var: t.Union[None, torch.Tensor] = None,
+        std: t.Union[None, torch.Tensor] = None,
         z: t.Union[None, torch.Tensor] = None,
     ) -> torch.Tensor:
         """
@@ -208,7 +161,7 @@ class VAEEncoder(nn.Module):
 
         - x: torch.Tensor:
             The input data. This is only used if :code:`mu`,
-            :code:`log_var`, and :code:`x` are not provided.
+            :code:`std`, and :code:`x` are not provided.
             Defaults to :code:`None`.
 
         - mu: torch.Tensor:
@@ -217,8 +170,8 @@ class VAEEncoder(nn.Module):
             encoded to obtain this value.
             Defaults to :code:`None`.
 
-        - log_var: torch.Tensor:
-            The log-variance of the latent distribution.
+        - std: torch.Tensor:
+            The standard deviation of the latent distribution.
             If this is not provided, then the input data
             will be encoded to obtain this value.
             Defaults to :code:`None`.
@@ -238,12 +191,15 @@ class VAEEncoder(nn.Module):
             latent distribution.
 
         """
-        if mu == None or log_var == None or z == None:
-            mu, log_var = self.encode_net(x).chunk(2, dim=-1)
-            z = self.reparameterization(mu, log_var)
-        return log_normal_diag(z, mu, log_var, reduction=None, dim=None)
+        if mu == None or std == None or z == None:
+            mu, std = self.encode_net(x)
+            qz = torch.distributions.Normal(mu, std)
+            z = qz.rsample()
+        else:
+            qz = torch.distributions.Normal(mu, std)
+        return qz.log_prob(z)
 
-    # return z, mu, and log_var
+    # return z, mu, and std
     def forward(
         self, x: torch.Tensor
     ) -> t.Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -266,13 +222,13 @@ class VAEEncoder(nn.Module):
         - mu: torch.Tensor:
             The mean of the latent distribution.
 
-        - log_var: torch.Tensor:
-            The log-variance of the latent distribution.
+        - std: torch.Tensor:
+            The standard deviation of the latent distribution.
 
 
         """
-        mu, log_var = self.encode(x)
-        return self.sample(mu=mu, log_var=log_var), mu, log_var
+        mu, std = self.encode(x)
+        return self.sample(mu=mu, std=std), mu, std
 
 
 list_distributions = ["categorical", "bernoulli", "standard_normal"]
@@ -286,9 +242,9 @@ class VAEDecoder(nn.Module):
             "categorical", "bernoulli", "standard_normal"
         ] = "standard_normal",
         num_values: t.Union[int, None] = None,
-        decoder_log_var: bool = False,
+        decoder_std: bool = False,
         out_shape: t.Union[t.Tuple[int, ...], None] = None,
-        log_var_method: t.Literal["learned", "fixed"] = "fixed",
+        std_method: t.Literal["learned", "fixed"] = "fixed",
     ):
         """
         The decoder network that maps the latent sample to the
@@ -308,7 +264,7 @@ class VAEDecoder(nn.Module):
             ...     nn.ReLU(),
             ...     nn.Linear(256, 32),
             ... )
-            >>> decoder = Decoder(decoder_net, distribution='bernoulli')
+            >>> decoder = VAEDecoder(decoder_net, distribution='bernoulli')
         
         
         Arguments
@@ -319,15 +275,18 @@ class VAEDecoder(nn.Module):
             parameters of the distribution over the data.
 
             - categorical distribution: the output \
-                of this network should be of shape :code:`(batch_size, data_shape, num_values)`.
+                of this network should be of shape :code:`(batch_size, data_shape, num_values)`. The softmax \
+                function will be applied to this output to ensure that the values in the last dimension sum to 1.
             
             - bernoulli distribution: the output \
-                of this network should be of shape :code:`(batch_size, data_shape)`.
+                of this network should be of shape :code:`(batch_size, data_shape)`. The sigmoid \
+                function will be applied to this output to ensure that the output is between 0 and 1.
             
             - standard normal distribution: the output \
                 of this network should be of shape :code:`(batch_size, data_shape)`\
-                if the :code:`decoder_log_var` argument is :code:`False`, else the output \
-                of this network should be of shape :code:`(batch_size, data_shape, 2)`.
+                if the :code:`decoder_decoder_std` argument is :code:`False`, else the output \
+                of this network should be of shape :code:`(2, batch_size, data_shape)`. No functions \
+                will be applied to this output. 
         
         - distribution: t.Literal["categorical", "bernoulli", "standard_normal"], optional:
             The distribution of the output. 
@@ -337,23 +296,23 @@ class VAEDecoder(nn.Module):
             The number of values in the categorical distribution if used. 
             Defaults to :code:`None`.
         
-        - decoder_log_var: bool, optional:
-            Whether the decoder network outputs the log-variance of the distribution.
+        - decoder_std: bool, optional:
+            Whether the decoder network outputs the standard deviation of the distribution.
             This is only used in the case of the standard normal distribution.
             If it does not, then the network should output shape :code:`(batch_size, data_shape)`.
             Defaults to :code:`False`.
         
         - out_shape: t.Union[t.Tuple[int, ...], None], optional:
             The shape of the output data.
-            This is only used in the case of the :code:`decoder_log_var=False`.
+            This is only used in the case of the :code:`decoder_std=False`.
             Defaults to :code:`None`.
 
-        - log_var_method: t.Literal["learned", "fixed"], optional:
-            Whether the log-variance of the standard normal
+        - std_method: t.Literal["learned", "fixed"], optional:
+            Whether the standard deviation of the normal
             distribution is learned or fixed. If :code:`"learned"`,
-            then the log-variance will be learned. If :code:`"fixed"`,
-            then the log-variance will be fixed to a value of :code:`1`.
-            This will only be used if :code:`decoder_log_var=False`.
+            then the standard deviation will be learned. If :code:`"fixed"`,
+            then the standard deviation will be fixed to a value of :code:`1`.
+            This will only be used if :code:`decoder_std=False`.
             Defaults to :code:`"fixed"`.
         
         
@@ -368,18 +327,20 @@ class VAEDecoder(nn.Module):
         self.decoder_net = decoder_net
         self.distribution = distribution
         self.num_values = num_values
-        self.decoder_log_var = decoder_log_var
-        if not decoder_log_var:
+        self.decoder_std = decoder_std
+        if not decoder_std:
             if out_shape == None:
-                raise ValueError(
-                    "out_shape must be specified if decoder_log_var is True."
+                raise ValueError("out_shape must be specified if decoder_std is False.")
+            if std_method == "fixed":
+                self.std = nn.Parameter(
+                    torch.log(
+                        torch.e - torch.ones(out_shape)
+                    )  # will equal 1 when softplus applied
                 )
-            if log_var_method == "fixed":
-                self.log_var = nn.Parameter(torch.ones(out_shape))
-                self.log_var.requires_grad = False
-            elif log_var_method == "learned":
-                self.log_var = nn.Parameter(torch.zeros(out_shape))
-                torch.nn.init.uniform_(self.log_var, a=-0.08, b=0.08)
+                self.std.requires_grad = False
+            elif std_method == "learned":
+                self.std = nn.Parameter(torch.zeros(out_shape))
+                torch.nn.init.normal_(self.std, mean=0, std=0.1)
 
     # calculates the parameteres of the distribution p(x|z)
     def decode(self, z: torch.Tensor) -> torch.Tensor:
@@ -406,25 +367,25 @@ class VAEDecoder(nn.Module):
         x_hat = self.decoder_net(z)
 
         if self.distribution == "categorical":
-            # x_hat will be of shape (batch_size, data_shape, num_values)
+            # input x_hat should be of shape (batch_size, data_shape, num_values)
             batch_size = x_hat.shape[0]
             data_shape = x_hat.shape[1:-1]
             x_hat = x_hat.reshape(batch_size, *data_shape, self.num_values)
             return torch.softmax(x_hat, dim=-1)
 
         elif self.distribution == "bernoulli":
-            # x_hat will be of shape (batch_size, data_shape)
+            # input x_hat will be of shape (batch_size, data_shape)
             return torch.sigmoid(x_hat)
 
         elif self.distribution == "standard_normal":
-            # x_hat will be of shape (batch_size, data_shape, 2)
-            if self.decoder_log_var:
-                mu, log_var = x_hat[..., 0], x_hat[..., 1]
-                return torch.concat([mu, log_var], axis=-1)
-            # x_hat will be of shape (batch_size, data_shape)
+            # input x_hat will be of shape (batch_size, data_shape, 2)
+            if self.decoder_std:
+                mu, std = x_hat
+                return mu, std
+            # input x_hat will be of shape (batch_size, data_shape)
             else:
                 mu = x_hat
-                return torch.cat([mu, self.log_var.expand(*mu.shape)], axis=-1)
+                return mu, F.softplus(self.std.expand(*mu.shape)) + EPS
 
         else:
             raise ValueError("Distribution not supported")
@@ -455,18 +416,25 @@ class VAEDecoder(nn.Module):
 
         if self.distribution == "categorical":
             mu = out
-            batch_size, n_pixels = mu.shape
-            return torch.multinomial(mu.view(batch_size * n_pixels, -1), 1).view(
-                batch_size, n_pixels
+
+            batch_size = mu.shape[0]
+            data_shape = mu.shape[1:-1]
+            n_categories = mu.shape[-1]
+
+            px = torch.distributions.Categorical(
+                probs=mu.view(-1, n_categories),
             )
+            return px.sample().view(batch_size, *data_shape)
 
         elif self.distribution == "bernoulli":
             mu = out
-            return torch.bernoulli(mu)
+            px = torch.distributions.Bernoulli(mu)
+            return px.sample()
 
         elif self.distribution == "standard_normal":
-            mu, log_var_d = out.chunk(2, dim=-1)
-            return torch.distributions.Normal(mu, torch.exp(0.5 * log_var_d)).sample()
+            mu, std = out
+            px = torch.distributions.Normal(mu, std)
+            return px.sample()
 
     # calculate the log probability of x under p(x|z)
     def log_prob(self, x: torch.Tensor, z: torch.Tensor) -> torch.Tensor:
@@ -493,19 +461,34 @@ class VAEDecoder(nn.Module):
 
         """
         if self.distribution == "categorical":
-            return log_categorical(
-                x, self.decode(z), num_classes=self.num_values, reduction="sum", dim=-1
-            ).sum(-1)
+
+            mu = self.decode(z)
+            batch_size = mu.shape[0]
+            data_shape = mu.shape[1:-1]
+            n_categories = mu.shape[-1]
+
+            px = torch.distributions.Categorical(
+                probs=mu.view(-1, n_categories),
+            )
+            log_prob = px.log_prob(x.view(-1)).reshape(batch_size, *data_shape)
 
         elif self.distribution == "bernoulli":
-            return log_bernoulli(x, self.decode(z), reduction="sum", dim=-1).sum(-1)
+            px = torch.distributions.Bernoulli(self.decode(z))
+            log_prob = px.log_prob(x)
 
         elif self.distribution == "standard_normal":
-            mu, log_var = self.decode(z).chunk(2, dim=-1)
-            return log_normal_diag(x, mu, log_var, reduction="sum", dim=-1).sum(-1)
+            mu, std = self.decode(z)
+            px = torch.distributions.Normal(mu, std)
+            log_prob = px.log_prob(x)
 
         else:
             raise ValueError("Distribution not supported")
+
+        # probabilties are summed over the data dimensions
+        if len(log_prob.shape) > 1:
+            log_prob = log_prob.view(x.shape[0], -1).sum(-1)
+
+        return log_prob
 
     def forward(
         self,
@@ -669,12 +652,12 @@ class GaussianMixPrior(nn.Module):
         self.L = L
         self.num_components = num_components
 
-        self.mus = nn.parameter.Parameter(torch.zeros(size=(num_components, L)))
-        self.log_vars = nn.parameter.Parameter(torch.zeros(size=(num_components, L)))
-        self.w = nn.parameter.Parameter(torch.zeros(size=(num_components, 1, 1)))
+        self.mus = nn.Parameter(torch.zeros(size=(num_components, L)))
+        self.stds = nn.Parameter(torch.zeros(size=(num_components, L)))
+        self.w = nn.Parameter(torch.zeros(size=(num_components, 1, 1)))
 
         nn.init.normal_(self.mus, mean=0, std=0.1)
-        nn.init.normal_(self.log_vars, mean=0, std=0.1)
+        nn.init.normal_(self.stds, mean=0, std=0.1)
         nn.init.normal_(self.w, mean=0, std=0.1)
 
     def sample(self, batch_size: int) -> torch.Tensor:
@@ -699,17 +682,23 @@ class GaussianMixPrior(nn.Module):
         w = F.softmax(self.w, dim=0).squeeze()  # num_components
         indexes = torch.multinomial(w, batch_size, replacement=True)
         mus = self.mus  # num_components x L
-        log_vars = self.log_vars  # num_components x L
+        stds = self.stds  # num_components x L
 
         eps = torch.randn(batch_size, self.L, device=self.mus.device)
         for i in range(batch_size):
-            indx = indexes[i]
+            idx = indexes[i]
             if i == 0:
-                z = mus[[indx]] + eps[[i]] * torch.exp(log_vars[[indx]])
-            else:
-                z = torch.cat(
-                    (z, mus[[indx]] + eps[[i]] * torch.exp(log_vars[[indx]])), 0
+                pz = torch.distributions.Normal(
+                    mus[[idx]], F.softplus(stds[[idx]]) + EPS
                 )
+                z_sample = pz.sample().reshape(1, self.L)
+                z = z_sample
+            else:
+                pz = torch.distributions.Normal(
+                    mus[[idx]], F.softplus(stds[[idx]]) + EPS
+                )
+                z_sample = pz.sample().reshape(1, self.L)
+                z = torch.cat((z, z_sample), 0)
         return z
 
     def log_prob(self, z: torch.Tensor) -> torch.Tensor:
@@ -735,11 +724,11 @@ class GaussianMixPrior(nn.Module):
         w = F.softmax(self.w, dim=0)
         z = z.unsqueeze(0)  # 1 x B x L
         mus = self.mus.unsqueeze(1)  # num_components x 1 x L
-        log_vars = self.log_vars.unsqueeze(1)  # num_components x 1 x L
+        stds = self.stds.unsqueeze(1)  # num_components x 1 x L
 
-        log_p = log_normal_diag(z, mus, log_vars) + torch.log(
-            w
-        )  # num_components x B x L
+        pz = torch.distributions.Normal(mus, F.softplus(stds) + EPS)
+
+        log_p = pz.log_prob(z) + torch.log(w)  # num_components x B x L
 
         return torch.logsumexp(log_p, dim=0, keepdim=False)  # B x L
 
@@ -936,23 +925,20 @@ class VAE(nn.Module):
 
         """
         # encode
-        z, mu, log_var = self.encoder(x)
+        z, mu, std = self.encoder(x)
 
         # decode
-        reconstruction_term = self.decoder.log_prob(x, z).view(x.shape[0])
+        reconstruction_term = self.decoder.log_prob(x, z)
         kl_term = (
-            (
-                self.prior.log_prob(z)
-                - self.encoder.log_prob(z=z, mu=mu, log_var=log_var)
-            )
+            (self.prior.log_prob(z) - self.encoder.log_prob(z=z, mu=mu, std=std))
             .view(x.shape[0], -1)
             .sum(-1)
         )
 
         if reduction == "mean":
-            return -(reconstruction_term + self.KL_beta * kl_term).mean(-1)
+            return -(reconstruction_term + self.KL_beta * kl_term).mean()
         elif reduction == "sum":
-            return -(reconstruction_term + self.KL_beta * kl_term).sum(-1)
+            return -(reconstruction_term + self.KL_beta * kl_term).sum()
         elif reduction is None:
             return -(reconstruction_term + self.KL_beta * kl_term)
         else:
