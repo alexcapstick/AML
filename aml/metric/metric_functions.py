@@ -231,13 +231,13 @@ def format_mean_ci(
 
     if distribution == "norm":
         confidence_l, confidence_u = stats.norm.interval(
-            alpha=confidence,
+            confidence,
             loc=np.mean(values),
             scale=stats.sem(values),
         )
     elif distribution == "t":
         confidence_l, confidence_u = stats.t.interval(
-            alpha=confidence,
+            confidence,
             df=len(values) - 1,
             loc=np.mean(values),
             scale=stats.sem(values),

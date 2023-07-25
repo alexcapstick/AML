@@ -147,8 +147,8 @@ class TransformerEncoderModel(BaseLightningModule):
             ...     optimizer={'adam':{'lr':0.01}},
             ...     criterion='mseloss',
             ...     )
-            >>> X = torch.tensor(np.random.random((5, 10,100))).float()
-            >>> X_val = torch.tensor(np.random.random((5, 10,100))).float()
+            >>> X = torch.tensor(np.random.random((5, 10, 100))).float()
+            >>> X_val = torch.tensor(np.random.random((5, 10, 100))).float()
             >>> training_metrics = transformer_model.fit(X=X, X_val=X_val)
             >>> output = transformer_model.predict(X_test=X)
 
